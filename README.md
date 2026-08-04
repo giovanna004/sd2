@@ -3,7 +3,7 @@
 ## Dependências
 
 - Python 3.10+
-- OpenSSL (linha de comando, para gerar o certificado — já vem instalado na maioria dos sistemas Linux/macOS)
+- OpenSSL (linha de comando, para gerar o certificado)
 - Biblioteca `cryptography`: `pip install cryptography`
 - Demais bibliotecas usadas são da biblioteca padrão do Python (`socket`, `ssl`, `threading`, `json`, `struct`, `base64`, `hashlib`, `uuid`)
 
