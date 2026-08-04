@@ -1,23 +1,3 @@
-"""
-Protocolo de aplicação do chat corporativo (prova de conceito).
-
-Camada de transporte: TCP (sockets).
-Framing: cada mensagem é prefixada por 4 bytes (inteiro sem sinal, big-endian)
-indicando o tamanho em bytes do JSON que vem em seguida. Isso resolve o fato
-de TCP ser um fluxo de bytes, não de mensagens.
-
-Formato de toda mensagem da aplicação:
-{
-    "cabecalho": {
-        "tipo": <um dos tipos abaixo>,
-        "remetente": <nome do usuário ou None>,
-        "destinatario": <nome do usuário ou None>,
-        "id_mensagem": <string única, geralmente um uuid4>
-    },
-    "corpo": { ... campos específicos de cada tipo ... }
-}
-"""
-
 import socket
 import struct
 import json
@@ -36,9 +16,11 @@ CHUNK_ARQUIVO = "CHUNK_ARQUIVO"
 FIM_ARQUIVO = "FIM_ARQUIVO"
 DESCONECTAR = "DESCONECTAR"
 
+REDIRECIONAMENTO = "REDIRECIONAMENTO"        # gateway -> cliente: para qual broker ir
+ENCAMINHAR_ENTRE_ILHAS = "ENCAMINHAR_ENTRE_ILHAS"  # broker -> broker: repasse de mensagem
+ 
 # Tipos que o servidor apenas encaminha para o destinatário, sem interpretar o corpo
 TIPOS_ENCAMINHAVEIS = {MSG_TEXTO, ENVIO_ARQUIVO, CHUNK_ARQUIVO, FIM_ARQUIVO}
-
 
 def ler_exato(conexao: socket.socket, tamanho: int) -> bytes:
     """Lê exatamente `tamanho` bytes do socket, mesmo que recv() retorne em pedaços."""
