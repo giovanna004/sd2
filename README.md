@@ -79,7 +79,7 @@ SHA-256 antes de gravar o arquivo em disco.
   par de chaves RSA ao iniciar e assina digitalmente (RSA-PSS/SHA-256) cada
   mensagem de texto. Quem recebe verifica a assinatura com a chave pública
   embutida na própria mensagem.
-- **Limitação conhecida (documentar como trabalho futuro):** não há uma
+- **Limitação conhecida:** não há uma
   Autoridade Certificadora validando que uma chave pública realmente
   pertence ao usuário que se identificou com aquele nome (confiança no
   primeiro uso). Uma versão de produção exigiria uma PKI completa da
