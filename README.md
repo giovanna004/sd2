@@ -3,7 +3,6 @@
 ## Dependências
 
 - Python 3.10+
-- OpenSSL (linha de comando, para gerar o certificado — já vem instalado na maioria dos sistemas Linux/macOS)
 - Biblioteca `cryptography`: `pip install cryptography`
 - Demais bibliotecas usadas são da biblioteca padrão do Python (`socket`, `ssl`, `threading`, `json`, `struct`, `base64`, `hashlib`, `uuid`)
 
@@ -16,7 +15,7 @@
 - `gateway.py` — ponto de entrada único: identifica o usuário e devolve o broker correto
 - `servidor.py` — broker de uma ilha: conexões concorrentes, entrega local ou repasse para a ilha correta (via link TLS persistente entre brokers)
 - `cliente.py` — cliente CLI: descobre o broker via gateway, troca texto (assinado) e arquivos, mantém histórico causal local
-- `gerar_certificados.sh` — gera o certificado autoassinado usado por todos os processos
+- `gerar_certificados.py` — gera o certificado autoassinado (Python puro, funciona em Windows/Linux/macOS)
 
 ## Arquitetura
 
@@ -30,9 +29,9 @@ Broker A <-> Broker B (link TLS persistente, repasse automático entre ilhas)
 
 1. **Gere o certificado uma única vez** (na raiz do projeto, antes de subir qualquer processo):
    ```
-   ./gerar_certificados.sh
+   python3 gerar_certificados.py
    ```
-   Isso cria `certificado.pem` (público, usado por todos) e `chave.pem` (privado — não compartilhar/versionar). Todos os processos abaixo devem rodar na mesma pasta onde esses dois arquivos foram gerados.
+   Isso cria certificado.pem (público, usado por todos) e chave.pem (privado — não compartilhar/versionar). Todos os processos abaixo devem rodar na mesma pasta onde esses dois arquivos foram gerados.
 
 2. Suba o gateway:
    ```
@@ -79,7 +78,7 @@ SHA-256 antes de gravar o arquivo em disco.
   par de chaves RSA ao iniciar e assina digitalmente (RSA-PSS/SHA-256) cada
   mensagem de texto. Quem recebe verifica a assinatura com a chave pública
   embutida na própria mensagem.
-- **Limitação conhecida (documentar como trabalho futuro):** não há uma
+- **Limitação conhecida:** não há uma
   Autoridade Certificadora validando que uma chave pública realmente
   pertence ao usuário que se identificou com aquele nome (confiança no
   primeiro uso). Uma versão de produção exigiria uma PKI completa da

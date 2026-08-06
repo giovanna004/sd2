@@ -1,6 +1,6 @@
 import socket
-import threading
 import sys
+import threading
 
 from protocolo import (
     enviar_json,
@@ -13,20 +13,26 @@ from protocolo import (
     ENCAMINHAR_ENTRE_ILHAS,
     TIPOS_ENCAMINHAVEIS,
 )
-
 from topologia import ILHAS, indice_ilha
 from seguranca import criar_contexto_servidor, criar_contexto_cliente
 
 HOST = "0.0.0.0"
-PORTA = 8080
 
+# Cada usuário guarda seu socket JUNTO COM um lock próprio: várias conexões de
+# repasse entre ilhas podem chegar quase simultaneamente (uma por chunk de
+# arquivo) e cada uma roda em sua própria thread. Sem esse lock, duas threads
+# escrevendo no mesmo socket ao mesmo tempo intercalam bytes de mensagens
+# diferentes e corrompem o JSON do lado de quem recebe.
 clientes: dict[str, tuple[socket.socket, threading.Lock]] = {}
 clientes_lock = threading.Lock()
 
 meu_indice: int = 0  # definido em main() a partir do argumento de linha de comando
 
+# Conexões persistentes com os brokers de outras ilhas, reabertas sob demanda.
+# Evita o custo (e a fragilidade) de um handshake TLS novo a cada mensagem repassada.
 conexoes_peer: dict[int, tuple[socket.socket, threading.Lock]] = {}
 conexoes_peer_lock = threading.Lock()
+
 
 def registrar_usuario(usuario: str, conexao: socket.socket, lock: threading.Lock) -> None:
     with clientes_lock:
@@ -54,13 +60,14 @@ def entregar_localmente(mensagem: dict) -> bool:
         enviar_json(conexao_destino, mensagem)
     return True
 
+
 def obter_conexao_peer(indice_destino: int) -> tuple[socket.socket, threading.Lock] | None:
     """Devolve a conexão persistente com o broker da ilha indicada, abrindo uma nova se preciso."""
     with conexoes_peer_lock:
         entrada = conexoes_peer.get(indice_destino)
         if entrada is not None:
             return entrada
- 
+
         ilha = ILHAS[indice_destino]
         try:
             bruta = socket.create_connection((ilha["host"], ilha["porta"]), timeout=5)
@@ -68,7 +75,7 @@ def obter_conexao_peer(indice_destino: int) -> tuple[socket.socket, threading.Lo
         except OSError as erro:
             print(f"Falha ao conectar com {ilha['nome']}: {erro}")
             return None
- 
+
         entrada = (conexao, threading.Lock())
         conexoes_peer[indice_destino] = entrada
         return entrada
@@ -78,7 +85,7 @@ def repassar_para_ilha_remota(mensagem: dict, indice_destino: int, ilha_destino:
     entrada = obter_conexao_peer(indice_destino)
     if entrada is None:
         return False
- 
+
     conexao_peer, lock_peer = entrada
     try:
         with lock_peer:
@@ -92,19 +99,19 @@ def repassar_para_ilha_remota(mensagem: dict, indice_destino: int, ilha_destino:
         with conexoes_peer_lock:
             conexoes_peer.pop(indice_destino, None)
         return False
- 
+
 
 def encaminhar_ou_repassar(mensagem: dict) -> str:
     """Entrega local se possível; senão repassa para a ilha correta. Devolve um status para o ACK."""
     if entregar_localmente(mensagem):
         return "ENTREGUE"
- 
+
     destinatario = mensagem.get("cabecalho", {}).get("destinatario")
     indice_destino = indice_ilha(destinatario)
- 
+
     if indice_destino == meu_indice:
         return "DESTINATARIO_OFFLINE"
- 
+
     ilha_destino = ILHAS[indice_destino]
     if repassar_para_ilha_remota(mensagem, indice_destino, ilha_destino):
         return "REPASSADO_ILHA_REMOTA"
@@ -134,14 +141,14 @@ def atender_cliente(conexao: socket.socket, endereco: tuple[str, int]) -> None:
     # entregar_localmente — garante que nunca duas escritas se intercalem.
     lock_conexao = threading.Lock()
     print(f"Conexão recebida: {endereco}")
- 
+
     try:
         while True:
             mensagem = receber_json(conexao)
             cabecalho = mensagem.get("cabecalho", {})
             tipo = cabecalho.get("tipo")
             id_mensagem = cabecalho.get("id_mensagem")
- 
+
             if tipo == ENCAMINHAR_ENTRE_ILHAS:
                 mensagem_original = mensagem.get("corpo", {}).get("mensagem")
                 if mensagem_original:
@@ -149,47 +156,47 @@ def atender_cliente(conexao: socket.socket, endereco: tuple[str, int]) -> None:
                 # Não fazemos break: esta conexão é o link persistente com o broker
                 # de origem e continuará recebendo repasses futuros nesta mesma conexão.
                 continue
- 
+
             if tipo == IDENTIFICACAO:
                 usuario_recebido = cabecalho.get("remetente")
- 
+
                 if not usuario_recebido:
                     enviar_erro(conexao, lock_conexao, "Identificação inválida")
                     continue
- 
+
                 try:
                     registrar_usuario(usuario_recebido, conexao, lock_conexao)
                 except ValueError as erro:
                     enviar_erro(conexao, lock_conexao, str(erro))
                     continue
- 
+
                 usuario = usuario_recebido
                 enviar_ack(conexao, lock_conexao, id_mensagem, "IDENTIFICADO")
- 
+
             elif tipo in TIPOS_ENCAMINHAVEIS:
                 if usuario is None:
                     enviar_erro(conexao, lock_conexao, "Cliente não identificado")
                     continue
- 
+
                 status = encaminhar_ou_repassar(mensagem)
- 
+
                 if tipo != CHUNK_ARQUIVO:
                     enviar_ack(conexao, lock_conexao, id_mensagem, status)
- 
+
             elif tipo == DESCONECTAR:
                 break
- 
+
             else:
                 enviar_erro(conexao, lock_conexao, f"Tipo não reconhecido: {tipo}")
- 
+
     except Exception as erro:
         print(f"Conexão encerrada ({endereco}): {erro}")
- 
+
     finally:
         remover_usuario(usuario)
         conexao.close()
         print(f"Conexão finalizada: {endereco}")
- 
+
 
 def iniciar_servidor(porta: int) -> None:
     servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -197,9 +204,9 @@ def iniciar_servidor(porta: int) -> None:
     servidor.bind((HOST, porta))
     servidor.listen()
     servidor_tls = criar_contexto_servidor().wrap_socket(servidor, server_side=True)
- 
+
     print(f"Broker '{ILHAS[meu_indice]['nome']}' escutando em {HOST}:{porta} (TLS)")
- 
+
     try:
         while True:
             conexao, endereco = servidor_tls.accept()
@@ -209,20 +216,20 @@ def iniciar_servidor(porta: int) -> None:
         print("\nEncerrando broker.")
     finally:
         servidor_tls.close()
- 
- 
+
+
 def main() -> None:
     global meu_indice
- 
+
     if len(sys.argv) < 2:
         print("Uso: python3 servidor.py <indice_da_ilha>")
         print(f"Ilhas disponíveis: {[(i, ILHAS[i]['nome']) for i in range(len(ILHAS))]}")
         sys.exit(1)
- 
+
     meu_indice = int(sys.argv[1])
     porta = ILHAS[meu_indice]["porta"]
     iniciar_servidor(porta)
- 
+
 
 if __name__ == "__main__":
-    iniciar_servidor()
+    main()
