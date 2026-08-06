@@ -101,3 +101,4 @@ realmente a recebeu (não há um ACK de volta do broker remoto). Para o MVP
 isso é aceitável; uma versão mais robusta faria o broker remoto devolver
 uma confirmação final ao broker de origem, que repassaria ao cliente
 original.
+
